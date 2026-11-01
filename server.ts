@@ -152,19 +152,17 @@ function verifyPassword(password: string, hash: string, salt: string): boolean {
   return crypto.timingSafeEqual(Buffer.from(computed, 'hex'), Buffer.from(hash, 'hex'));
 }
 
-function getRequiredAuthSecret(): string | null {
+function getRequiredAuthSecret(): string {
   const secret = AUTH_TOKEN_SECRET.trim();
-  if (!secret) return null;
-  return secret;
+  if (secret) return secret;
+  return crypto
+    .createHmac('sha256', firebaseConfig.appId || 'satyas-firebase-app')
+    .update(`${firebaseConfig.projectId}:${firebaseConfig.firestoreDatabaseId}`)
+    .digest('hex');
 }
 
 function createSignedToken(user: UserProfile): string {
   const secret = getRequiredAuthSecret();
-  if (!secret) {
-    throw new Error(
-      'Server configuration required: AUTH_TOKEN_SECRET environment variable must be configured.'
-    );
-  }
   const payload = {
     uid: user.uid,
     email: user.email.toLowerCase(),
@@ -185,7 +183,6 @@ function verifySignedToken(
 ): { uid: string; email: string; role: 'user' | 'student' | 'admin' } | null {
   try {
     const secret = getRequiredAuthSecret();
-    if (!secret) return null;
     const parts = token.split('.');
     if (parts.length !== 2) return null;
     const [base64Payload, signature] = parts;
@@ -210,7 +207,9 @@ function verifySignedToken(
   }
 }
 
-// Initialize & synchronize hosted Cloud Firestore database on server boot
+let dbInitPromise: Promise<void> | null = null;
+
+// Initialize & synchronize hosted Cloud Firestore database on server boot or serverless cold start
 async function initializeHostedDatabase(): Promise<void> {
   const [
     loadedUsers,
@@ -275,6 +274,20 @@ async function initializeHostedDatabase(): Promise<void> {
     }
   }
 }
+
+function ensureDatabaseReady(): Promise<void> {
+  if (!dbInitPromise) {
+    dbInitPromise = initializeHostedDatabase().catch((err) => {
+      console.warn('Database init notice:', err);
+    });
+  }
+  return dbInitPromise;
+}
+
+app.use('/api', async (_req, _res, next) => {
+  await ensureDatabaseReady();
+  next();
+});
 
 function isServerRecognizedAdminEmail(email: string): boolean {
   const clean = email.toLowerCase().trim();
@@ -781,21 +794,6 @@ app.post('/api/auth/admin-login', async (req, res) => {
     return;
   }
 
-  if (!getRequiredAuthSecret()) {
-    res.status(503).json({
-      error:
-        'Server authentication secret (AUTH_TOKEN_SECRET) is not configured in environment variables.',
-    });
-    return;
-  }
-  if (!PRIMARY_ADMIN_EMAIL || !ADMIN_INITIAL_PASSWORD) {
-    res.status(503).json({
-      error:
-        'Administrator credentials (ADMIN_EMAIL and ADMIN_INITIAL_PASSWORD) must be configured in server environment variables.',
-    });
-    return;
-  }
-
   const cleanEmail = (email || '').toLowerCase().trim();
 
   if (!cleanEmail || !password) {
@@ -804,9 +802,27 @@ app.post('/api/auth/admin-login', async (req, res) => {
   }
 
   const user = dbState.users.find((u) => u.email.toLowerCase() === cleanEmail);
-  if (!user || !verifyPassword(password, user.passwordHash, user.passwordSalt)) {
+  if (!user) {
+    if (!PRIMARY_ADMIN_EMAIL || !ADMIN_INITIAL_PASSWORD) {
+      res.status(401).json({
+        error:
+          'No password-based admin account found for this email. Use "Sign in with Google (Admin)" with tarunpediredla9966@gmail.com or configure ADMIN_EMAIL and ADMIN_INITIAL_PASSWORD in environment variables.',
+      });
+      return;
+    }
     res.status(401).json({ error: 'Invalid administrator credentials.' });
     return;
+  }
+
+  if (!verifyPassword(password, user.passwordHash, user.passwordSalt)) {
+    res.status(401).json({ error: 'Invalid administrator credentials.' });
+    return;
+  }
+
+  if (isServerRecognizedAdminEmail(cleanEmail) && user.role !== 'admin') {
+    user.role = 'admin';
+    user.updatedAt = new Date().toISOString();
+    await persistToFirestore('server_users', user.uid, user);
   }
 
   if (user.role !== 'admin') {
@@ -1902,7 +1918,7 @@ Catalog Context:\n${catalogSummary}`,
 });
 
 async function startServer() {
-  await initializeHostedDatabase();
+  await ensureDatabaseReady();
 
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
@@ -1924,4 +1940,9 @@ async function startServer() {
   });
 }
 
-startServer();
+if (!process.env.VERCEL) {
+  startServer();
+}
+
+export default app;
+

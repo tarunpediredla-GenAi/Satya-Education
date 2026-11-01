@@ -726,18 +726,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return profile;
     } catch (fbErr: unknown) {
       const errCode = (fbErr as { code?: string })?.code || '';
-      // If Email/Password provider is not yet enabled in Firebase Console, fall back to server signup if available
-      if (errCode === 'auth/operation-not-allowed' || errCode === 'auth/configuration-not-found') {
-        const res = await fetch('/api/auth/signup', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data),
-        });
-        if (res.ok) {
-          const payload = (await res.json()) as { user: UserProfile; token: string };
-          await applyAuthenticatedSession(payload.user, payload.token);
-          showToast(`Welcome to Satya’s Education, ${payload.user.displayName}!`);
-          return payload.user;
+      // Automatically fall back to server Cloud Firestore signup when Email/Password provider is not manually toggled in Firebase Console
+      if (
+        errCode === 'auth/operation-not-allowed' ||
+        errCode === 'auth/configuration-not-found' ||
+        errCode === 'auth/admin-restricted-operation'
+      ) {
+        try {
+          const res = await fetch('/api/auth/signup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+          });
+          const payload = (await res.json().catch(() => ({}))) as {
+            user?: UserProfile;
+            token?: string;
+            error?: string;
+          };
+          if (res.ok && payload.user && payload.token) {
+            await applyAuthenticatedSession(payload.user, payload.token);
+            showToast(`Welcome to Satya’s Education, ${payload.user.displayName}!`);
+            return payload.user;
+          }
+          if (payload.error) {
+            setAuthError(payload.error);
+            throw new Error(payload.error);
+          }
+        } catch (fallbackErr: unknown) {
+          if (fallbackErr instanceof Error && fallbackErr.message) {
+            setAuthError(fallbackErr.message);
+            throw fallbackErr;
+          }
         }
       }
       const friendlyMsg = formatFirebaseAuthError(fbErr);
@@ -1110,6 +1129,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (user) {
       try {
         await setDoc(doc(db, 'lessonProgress', `${user.uid}_${lessonId}`), {
+          id: `${user.uid}_${lessonId}`,
           userId: user.uid,
           courseId,
           lessonId,
