@@ -179,8 +179,10 @@ export interface UserProfile {
   photoURL: string;
   phone?: string;
   bio?: string;
-  role: 'student' | 'admin';
+  role: 'user' | 'student' | 'admin';
+  emailVerified?: boolean;
   createdAt?: string;
+  lastLoginAt?: string;
   updatedAt?: string;
 }
 
@@ -190,11 +192,12 @@ export interface CustomerSummary {
   displayName: string;
   photoURL: string;
   phone?: string;
-  role: 'student' | 'admin';
+  role: 'user' | 'student' | 'admin';
   ordersCount: number;
   paidSpendInr: number;
   enrollmentsCount: number;
   createdAt: string;
+  lastLoginAt?: string;
 }
 
 export interface ChatMessage {

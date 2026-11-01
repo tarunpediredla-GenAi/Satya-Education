@@ -7,7 +7,7 @@ import { SelectedBookFormat } from '../types';
 
 export const BookDetailPage: React.FC = () => {
   const { bookId } = useParams<{ bookId: string }>();
-  const { books, addToCart, hasEbookAccess, user, showToast } = useApp();
+  const { books, addToCart, hasEbookAccess, user, authToken, showToast } = useApp();
   const navigate = useNavigate();
 
   const book = books.find((b) => b.id === bookId);
@@ -60,15 +60,14 @@ export const BookDetailPage: React.FC = () => {
     }
     setDownloadingEbook(true);
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (authToken) headers.Authorization = `Bearer ${authToken}`;
       const res = await fetch('/api/access/media', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
-          userId: user.uid,
-          userEmail: user.email,
           itemId: book.id,
           itemType: 'ebook',
-          isEnrollmentVerified: true,
         }),
       });
       const data = await res.json();

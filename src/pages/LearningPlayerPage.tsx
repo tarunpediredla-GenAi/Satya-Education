@@ -92,7 +92,6 @@ export const LearningPlayerPage: React.FC = () => {
             itemId: course.id,
             lessonId: lesson.id,
             itemType: 'course',
-            isFreePreview: lesson.isFreePreview,
           }),
         });
         const data = await res.json();
@@ -108,7 +107,8 @@ export const LearningPlayerPage: React.FC = () => {
         }
       } catch {
         if (active) {
-          setBackendAuthorized(canAccessLesson);
+          setBackendAuthorized(false);
+          setAuthorizedRecordingUrl('');
         }
       } finally {
         if (active) setAuthChecking(false);

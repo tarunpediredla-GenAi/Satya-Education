@@ -7,13 +7,20 @@
     --font-mono: 'IBM Plex Mono', monospace;
   }
 
+  html,
   body {
     font-family: var(--font-sans);
     background-color: #FAF8F5;
     color: #0B192C;
+    overflow-x: hidden;
+    max-width: 100vw;
+    -webkit-text-size-adjust: 100%;
   }
 
-  h1, h2, h3, .font-serif-display {
+  h1,
+  h2,
+  h3,
+  .font-serif-display {
     font-family: var(--font-display);
     text-wrap: balance;
   }
@@ -41,4 +48,3 @@
     scroll-behavior: auto !important;
   }
 }
-

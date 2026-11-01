@@ -9,7 +9,6 @@ import {
   Shield,
   Clock,
   CheckCircle2,
-  User as UserIcon,
   ShoppingBag,
   CreditCard,
   Settings,
@@ -17,6 +16,11 @@ import {
   RefreshCw,
   AlertCircle,
   Lock,
+  Eye,
+  EyeOff,
+  MailCheck,
+  KeyRound,
+  Loader2,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { BookCoverArt } from '../components/BookCoverArt';
@@ -38,6 +42,8 @@ export const StudentDashboardPage: React.FC = () => {
     signUpWithEmail,
     loginWithEmail,
     signInWithGoogle,
+    resetPassword,
+    resendVerificationEmail,
     signOut,
     updateUserProfile,
     courses,
@@ -55,14 +61,18 @@ export const StudentDashboardPage: React.FC = () => {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [verifyingOrderId, setVerifyingOrderId] = useState<string | null>(null);
 
-  // Unauthenticated User Panel Sign Up / Log In state
-  const [authTab, setAuthTab] = useState<'login' | 'signup'>('login');
+  // Unauthenticated User Panel Sign Up / Log In / Forgot Password state
+  const [authTab, setAuthTab] = useState<'login' | 'signup' | 'reset'>('login');
   const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [nameInput, setNameInput] = useState('');
   const [phoneInput, setPhoneInput] = useState('');
   const [authFormError, setAuthFormError] = useState<string | null>(null);
+  const [authFormSuccess, setAuthFormSuccess] = useState<string | null>(null);
   const [authSubmitting, setAuthSubmitting] = useState(false);
+  const [googleSubmitting, setGoogleSubmitting] = useState(false);
+  const [resendingVerification, setResendingVerification] = useState(false);
 
   // Profile Settings state
   const [profileName, setProfileName] = useState(user?.displayName || '');
@@ -70,6 +80,7 @@ export const StudentDashboardPage: React.FC = () => {
   const [profileBio, setProfileBio] = useState(user?.bio || '');
   const [profilePhoto, setProfilePhoto] = useState(user?.photoURL || '');
   const [newPassword, setNewPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
 
   // Store filter inside User Panel
@@ -101,9 +112,15 @@ export const StudentDashboardPage: React.FC = () => {
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthFormError(null);
+    setAuthFormSuccess(null);
     setAuthSubmitting(true);
     try {
-      if (authTab === 'signup') {
+      if (authTab === 'reset') {
+        await resetPassword(emailInput);
+        setAuthFormSuccess(
+          `Password reset instructions have been sent to ${emailInput.trim()}. Please check your email inbox and spam folder.`
+        );
+      } else if (authTab === 'signup') {
         await signUpWithEmail({
           email: emailInput,
           password: passwordInput,
@@ -120,78 +137,120 @@ export const StudentDashboardPage: React.FC = () => {
     }
   };
 
-  // Unauthenticated View: Dedicated User Panel Sign Up & Log In Screen
+  const handleGoogleSignInClick = async () => {
+    if (googleSubmitting) return;
+    setAuthFormError(null);
+    setAuthFormSuccess(null);
+    setGoogleSubmitting(true);
+    try {
+      await signInWithGoogle();
+    } catch (err: unknown) {
+      setAuthFormError(err instanceof Error ? err.message : 'Google sign-in error');
+    } finally {
+      setGoogleSubmitting(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    setResendingVerification(true);
+    try {
+      await resendVerificationEmail();
+    } catch {
+      // Toast already handled in context
+    } finally {
+      setResendingVerification(false);
+    }
+  };
+
+  // Unauthenticated View: Dedicated User Panel Sign Up, Log In & Password Reset Screen
   if (!user) {
     return (
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
         <div className="grid grid-cols-1 lg:grid-cols-12 rounded-2xl overflow-hidden bg-white border border-[#0B192C]/15 shadow-sm">
           {/* Left Column: Brand Context */}
-          <div className="lg:col-span-5 bg-[#0B192C] text-[#FAF8F5] p-8 flex flex-col justify-between space-y-6">
+          <div className="lg:col-span-5 bg-[#0B192C] text-[#FAF8F5] p-6 sm:p-8 flex flex-col justify-between space-y-6">
             <div className="space-y-4">
               <div className="flex items-center gap-3">
                 <img
                   src="/assets/aistudio/image_42ebc6e4.png"
                   alt="Satya's Education Logo"
-                  className="w-11 h-11 rounded-lg bg-white p-0.5 object-contain"
+                  className="w-11 h-11 rounded-lg bg-white p-0.5 object-contain shrink-0"
                 />
-                <div>
+                <div className="min-w-0">
                   <p className="text-[11px] font-mono-tabular uppercase text-[#C59B27]">
                     Student Portal · /dashboard
                   </p>
-                  <h1 className="font-serif-display text-xl font-bold text-white">
+                  <h1 className="font-serif-display text-xl font-bold text-white truncate">
                     Satya’s Education
                   </h1>
                 </div>
               </div>
-              <h2 className="font-serif-display text-2xl font-bold leading-snug text-white pt-2">
+              <h2 className="font-serif-display text-xl sm:text-2xl font-bold leading-snug text-white pt-2">
                 Your Personal Learning & Book Library
               </h2>
               <p className="text-xs sm:text-sm text-[#FAF8F5]/75 leading-relaxed">
-                Create a student account or log in to access your purchased courses, recorded video lessons, downloadable e-books, and Cashfree payment receipts.
+                Create a student account or sign in with Google or Email & Password to access your purchased courses, recorded video lessons, downloadable e-books, and payment receipts.
               </p>
             </div>
 
             <div className="space-y-2.5 pt-4 border-t border-white/15 text-xs text-[#FAF8F5]/80">
               <p className="font-mono-tabular text-[#5EEAD4]">Security & Privacy Guarantees:</p>
               <ul className="space-y-1.5 list-disc list-inside text-[#FAF8F5]/75">
-                <li>New accounts always receive the standard Student role</li>
+                <li>Powered by Firebase Authentication & Cloud Firestore</li>
+                <li>New accounts automatically receive the standard User role</li>
                 <li>Strict isolation: you only see your own orders & recordings</li>
-                <li>Purchases unlock immediately after verified Cashfree payment</li>
               </ul>
             </div>
           </div>
 
-          {/* Right Column: Sign Up / Log In Form */}
-          <div className="lg:col-span-7 p-8 space-y-6">
-            <div className="flex items-center justify-between border-b border-[#0B192C]/10 pb-4">
-              <div className="flex gap-2 p-1 bg-[#FAF8F5] rounded-xl border border-[#0B192C]/10">
+          {/* Right Column: Sign Up / Log In / Reset Form */}
+          <div className="lg:col-span-7 p-5 sm:p-8 space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#0B192C]/10 pb-4">
+              <div className="flex flex-wrap gap-1.5 p-1 bg-[#FAF8F5] rounded-xl border border-[#0B192C]/10 w-full sm:w-auto">
                 <button
                   type="button"
                   onClick={() => {
                     setAuthTab('login');
                     setAuthFormError(null);
+                    setAuthFormSuccess(null);
                   }}
-                  className={`px-4 py-2 rounded-lg text-xs font-semibold transition-colors ${
+                  className={`flex-1 sm:flex-initial px-3.5 py-2 rounded-lg text-xs font-semibold transition-colors ${
                     authTab === 'login'
                       ? 'bg-[#0B192C] text-white'
                       : 'text-[#0B192C]/70 hover:text-[#0B192C]'
                   }`}
                 >
-                  Student Log In
+                  Log In
                 </button>
                 <button
                   type="button"
                   onClick={() => {
                     setAuthTab('signup');
                     setAuthFormError(null);
+                    setAuthFormSuccess(null);
                   }}
-                  className={`px-4 py-2 rounded-lg text-xs font-semibold transition-colors ${
+                  className={`flex-1 sm:flex-initial px-3.5 py-2 rounded-lg text-xs font-semibold transition-colors ${
                     authTab === 'signup'
                       ? 'bg-[#0B192C] text-white'
                       : 'text-[#0B192C]/70 hover:text-[#0B192C]'
                   }`}
                 >
-                  Create Student Account
+                  Create Account
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthTab('reset');
+                    setAuthFormError(null);
+                    setAuthFormSuccess(null);
+                  }}
+                  className={`flex-1 sm:flex-initial px-3.5 py-2 rounded-lg text-xs font-semibold transition-colors ${
+                    authTab === 'reset'
+                      ? 'bg-[#0B192C] text-white'
+                      : 'text-[#0B192C]/70 hover:text-[#0B192C]'
+                  }`}
+                >
+                  Forgot Password
                 </button>
               </div>
 
@@ -206,18 +265,76 @@ export const StudentDashboardPage: React.FC = () => {
             {authFormError && (
               <div
                 role="alert"
-                className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs flex items-center gap-2"
+                className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs flex items-start gap-2.5"
               >
-                <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-600 mt-0.5" />
                 <span>{authFormError}</span>
               </div>
             )}
+
+            {authFormSuccess && (
+              <div
+                role="status"
+                className="p-3.5 rounded-xl bg-[#0D6E6E]/10 border border-[#0D6E6E]/25 text-[#0B192C] text-xs flex items-start gap-2.5"
+              >
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-[#0D6E6E] mt-0.5" />
+                <span>{authFormSuccess}</span>
+              </div>
+            )}
+
+            {/* Google Sign-In Button at Top for 1-Tap Access */}
+            <button
+              type="button"
+              disabled={googleSubmitting}
+              onClick={handleGoogleSignInClick}
+              className="w-full py-3 px-4 rounded-xl border border-[#0B192C]/20 bg-[#FAF8F5] text-xs sm:text-sm font-semibold text-[#0B192C] hover:bg-[#0B192C] hover:text-white transition-colors flex items-center justify-center gap-2.5 disabled:opacity-60"
+            >
+              {googleSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-[#0D6E6E]" />
+                  <span>Connecting to Google...</span>
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      fill="#EA4335"
+                      d="M12 10.2v3.9h5.5c-.2 1.2-.9 2.3-2 3l3.2 2.5c1.9-1.7 3-4.3 3-7.4 0-.7-.1-1.4-.2-2H12z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M12 22c2.7 0 5-.9 6.7-2.4l-3.2-2.5c-.9.6-2.1 1-3.5 1-2.7 0-5-1.8-5.8-4.3H2.9v2.6C4.6 19.8 8 22 12 22z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M6.2 13.8c-.2-.6-.3-1.2-.3-1.8s.1-1.2.3-1.8V7.6H2.9C2.3 8.9 2 10.4 2 12s.3 3.1.9 4.4l3.3-2.6z"
+                    />
+                    <path
+                      fill="#4285F4"
+                      d="M12 5.9c1.5 0 2.8.5 3.8 1.5l2.9-2.9C16.9 2.9 14.7 2 12 2 8 2 4.6 4.2 2.9 7.6l3.3 2.6c.8-2.5 3.1-4.3 5.8-4.3z"
+                    />
+                  </svg>
+                  <span>Continue with Google</span>
+                </>
+              )}
+            </button>
+
+            <div className="relative flex py-1 items-center">
+              <div className="grow border-t border-[#0B192C]/10" />
+              <span className="shrink mx-3 text-xs text-[#0B192C]/50">
+                {authTab === 'reset' ? 'or reset password via email' : 'or use email & password'}
+              </span>
+              <div className="grow border-t border-[#0B192C]/10" />
+            </div>
 
             <form onSubmit={handleAuthSubmit} className="space-y-4">
               {authTab === 'signup' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label htmlFor="up-name" className="block text-xs font-semibold text-[#0B192C] mb-1">
+                    <label
+                      htmlFor="up-name"
+                      className="block text-xs font-semibold text-[#0B192C] mb-1"
+                    >
                       Full Name *
                     </label>
                     <input
@@ -231,7 +348,10 @@ export const StudentDashboardPage: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label htmlFor="up-phone" className="block text-xs font-semibold text-[#0B192C] mb-1">
+                    <label
+                      htmlFor="up-phone"
+                      className="block text-xs font-semibold text-[#0B192C] mb-1"
+                    >
                       Phone Number (Optional)
                     </label>
                     <input
@@ -247,7 +367,10 @@ export const StudentDashboardPage: React.FC = () => {
               )}
 
               <div>
-                <label htmlFor="up-email" className="block text-xs font-semibold text-[#0B192C] mb-1">
+                <label
+                  htmlFor="up-email"
+                  className="block text-xs font-semibold text-[#0B192C] mb-1"
+                >
                   Email Address *
                 </label>
                 <input
@@ -261,49 +384,78 @@ export const StudentDashboardPage: React.FC = () => {
                 />
               </div>
 
-              <div>
-                <label htmlFor="up-password" className="block text-xs font-semibold text-[#0B192C] mb-1">
-                  Password (min. 6 characters) *
-                </label>
-                <input
-                  id="up-password"
-                  type="password"
-                  required
-                  minLength={6}
-                  placeholder="••••••••"
-                  value={passwordInput}
-                  onChange={(e) => setPasswordInput(e.target.value)}
-                  className="w-full px-3.5 py-2.5 text-sm rounded-lg border border-[#0B192C]/20 bg-[#FAF8F5]"
-                />
-              </div>
+              {authTab !== 'reset' && (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label
+                      htmlFor="up-password"
+                      className="block text-xs font-semibold text-[#0B192C]"
+                    >
+                      Password (min. 6 characters) *
+                    </label>
+                    {authTab === 'login' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAuthTab('reset');
+                          setAuthFormError(null);
+                          setAuthFormSuccess(null);
+                        }}
+                        className="text-xs font-medium text-[#0D6E6E] hover:underline"
+                      >
+                        Forgot password?
+                      </button>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <input
+                      id="up-password"
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      minLength={6}
+                      placeholder="••••••••"
+                      value={passwordInput}
+                      onChange={(e) => setPasswordInput(e.target.value)}
+                      className="w-full pl-3.5 pr-10 py-2.5 text-sm rounded-lg border border-[#0B192C]/20 bg-[#FAF8F5]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((prev) => !prev)}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-[#0B192C]/60 hover:text-[#0B192C]"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <button
                 type="submit"
                 disabled={authSubmitting}
-                className="w-full py-3 px-4 rounded-xl bg-[#0B192C] text-white text-sm font-semibold hover:bg-[#0D6E6E] transition-colors disabled:opacity-50"
+                className="w-full py-3 px-4 rounded-xl bg-[#0B192C] text-white text-sm font-semibold hover:bg-[#0D6E6E] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {authSubmitting
-                  ? 'Authenticating...'
-                  : authTab === 'signup'
-                  ? 'Sign Up for Student Account'
-                  : 'Log In to User Panel'}
+                {authSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>
+                      {authTab === 'reset'
+                        ? 'Sending Reset Link...'
+                        : 'Authenticating...'}
+                    </span>
+                  </>
+                ) : authTab === 'reset' ? (
+                  <>
+                    <KeyRound className="w-4 h-4" />
+                    <span>Send Password Reset Email</span>
+                  </>
+                ) : authTab === 'signup' ? (
+                  'Create Student Account'
+                ) : (
+                  'Log In to User Panel'
+                )}
               </button>
             </form>
-
-            <div className="relative flex py-1 items-center">
-              <div className="grow border-t border-[#0B192C]/10" />
-              <span className="shrink mx-3 text-xs text-[#0B192C]/50">or continue with</span>
-              <div className="grow border-t border-[#0B192C]/10" />
-            </div>
-
-            <button
-              type="button"
-              onClick={() => signInWithGoogle()}
-              className="w-full py-2.5 px-4 rounded-xl border border-[#0B192C]/20 text-xs sm:text-sm font-semibold text-[#0B192C] hover:bg-[#FAF8F5] transition-colors flex items-center justify-center gap-2"
-            >
-              <UserIcon className="w-4 h-4 text-[#0D6E6E]" />
-              <span>Continue with Google</span>
-            </button>
           </div>
         </div>
       </div>
@@ -505,7 +657,32 @@ export const StudentDashboardPage: React.FC = () => {
         </aside>
 
         {/* USER PANEL MAIN WORKSPACE */}
-        <div className="lg:col-span-9 space-y-8">
+        <div className="lg:col-span-9 space-y-8 min-w-0">
+          {/* Email Verification Notice if email is not verified yet */}
+          {user.emailVerified === false && (
+            <div className="p-4 rounded-2xl bg-[#F3EDE0] border border-[#C59B27]/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <MailCheck className="w-5 h-5 text-[#B48327] shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs sm:text-sm font-semibold text-[#0B192C]">
+                    Verify your email address ({user.email})
+                  </p>
+                  <p className="text-xs text-[#0B192C]/70">
+                    Check your inbox for the verification link to secure your account and password recovery.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={resendingVerification}
+                onClick={handleResendVerification}
+                className="px-3.5 py-2 rounded-xl bg-[#0B192C] text-white text-xs font-semibold hover:bg-[#0D6E6E] transition-colors whitespace-nowrap shrink-0 disabled:opacity-50"
+              >
+                {resendingVerification ? 'Sending...' : 'Resend Verification Email'}
+              </button>
+            </div>
+          )}
+
           {/* SECTION 1: OVERVIEW & CONTINUE LEARNING */}
           {activeSection === 'overview' && (
             <div className="space-y-8">
@@ -1196,24 +1373,41 @@ export const StudentDashboardPage: React.FC = () => {
                 </div>
 
                 <div>
-                  <label htmlFor="prof-newpass" className="block text-xs font-semibold text-[#0B192C] mb-1">
+                  <label
+                    htmlFor="prof-newpass"
+                    className="block text-xs font-semibold text-[#0B192C] mb-1"
+                  >
                     Update Password (leave blank to keep current password)
                   </label>
-                  <input
-                    id="prof-newpass"
-                    type="password"
-                    minLength={6}
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="New password (min 6 characters)"
-                    className="w-full px-3.5 py-2 text-sm rounded-lg border border-[#0B192C]/20 bg-[#FAF8F5]"
-                  />
+                  <div className="relative">
+                    <input
+                      id="prof-newpass"
+                      type={showNewPassword ? 'text' : 'password'}
+                      minLength={6}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="New password (min 6 characters)"
+                      className="w-full pl-3.5 pr-10 py-2.5 text-sm rounded-lg border border-[#0B192C]/20 bg-[#FAF8F5]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword((prev) => !prev)}
+                      aria-label={showNewPassword ? 'Hide new password' : 'Show new password'}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-[#0B192C]/60 hover:text-[#0B192C]"
+                    >
+                      {showNewPassword ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
                 </div>
 
                 <button
                   type="submit"
                   disabled={savingProfile}
-                  className="px-6 py-2.5 rounded-xl bg-[#0B192C] text-white text-xs sm:text-sm font-semibold hover:bg-[#0D6E6E] transition-colors disabled:opacity-50"
+                  className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-[#0B192C] text-white text-xs sm:text-sm font-semibold hover:bg-[#0D6E6E] transition-colors disabled:opacity-50"
                 >
                   {savingProfile ? 'Saving Changes...' : 'Save Profile Settings'}
                 </button>

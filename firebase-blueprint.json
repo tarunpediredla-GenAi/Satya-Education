@@ -30,22 +30,37 @@
         },
         "role": {
           "type": "string",
-          "enum": ["student", "admin"],
-          "description": "Role enforced by backend and security rules",
+          "enum": ["user", "student", "admin"],
+          "description": "Role enforced by backend and security rules (default: user)",
           "maxLength": 20
+        },
+        "phone": {
+          "type": "string",
+          "description": "Optional phone number",
+          "maxLength": 30
+        },
+        "bio": {
+          "type": "string",
+          "description": "Optional user biography",
+          "maxLength": 600
         },
         "createdAt": {
           "type": "string",
           "format": "date-time",
-          "description": "Server creation timestamp"
+          "description": "Account creation timestamp"
+        },
+        "lastLoginAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last sign-in timestamp"
         },
         "updatedAt": {
           "type": "string",
           "format": "date-time",
-          "description": "Server update timestamp"
+          "description": "Profile update timestamp"
         }
       },
-      "required": ["uid", "email", "displayName", "photoURL", "role", "createdAt", "updatedAt"]
+      "required": ["uid", "email", "displayName", "photoURL", "role", "createdAt", "lastLoginAt"]
     },
     "Book": {
       "title": "Book",

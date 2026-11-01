@@ -18,6 +18,7 @@ import {
   ArrowDown,
   Video,
   IndianRupee,
+  Trash2,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { BookItem, CourseItem, CourseLesson } from '../types';
@@ -37,13 +38,17 @@ export const AdminDashboardPage: React.FC = () => {
     verifiedRevenueAdmin,
     refreshAdminOverview,
     upsertBookAdmin,
+    deleteBookAdmin,
     upsertCourseAdmin,
+    deleteCourseAdmin,
     updateOrderShippingAdmin,
     showToast,
   } = useApp();
   const navigate = useNavigate();
 
   const [activeSection, setActiveSection] = useState<AdminSection>('overview');
+  const [confirmDeleteBookId, setConfirmDeleteBookId] = useState<string | null>(null);
+  const [confirmDeleteCourseId, setConfirmDeleteCourseId] = useState<string | null>(null);
 
   // Book Form State
   const [editingBook, setEditingBook] = useState<BookItem>({
@@ -827,7 +832,7 @@ export const AdminDashboardPage: React.FC = () => {
                     return (
                       <div
                         key={b.id}
-                        className="p-4 flex items-center justify-between gap-4 text-xs hover:bg-[#FAF8F5]/60"
+                        className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs hover:bg-[#FAF8F5]/60"
                       >
                         <div className="min-w-0">
                           <p className="font-semibold text-[#0B192C] truncate">
@@ -845,7 +850,7 @@ export const AdminDashboardPage: React.FC = () => {
                             {b.stock}
                           </p>
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
+                        <div className="flex flex-wrap items-center gap-2 shrink-0">
                           <button
                             type="button"
                             onClick={() =>
@@ -879,6 +884,37 @@ export const AdminDashboardPage: React.FC = () => {
                               </>
                             )}
                           </button>
+                          {confirmDeleteBookId === b.id ? (
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  await deleteBookAdmin(b.id);
+                                  setConfirmDeleteBookId(null);
+                                }}
+                                className="px-2.5 py-1.5 rounded bg-red-600 text-white font-semibold hover:bg-red-700"
+                              >
+                                Confirm Remove
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDeleteBookId(null)}
+                                className="px-2 py-1.5 rounded border border-[#0B192C]/20 text-[#0B192C]/70"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteBookId(b.id)}
+                              aria-label={`Remove ${b.title}`}
+                              className="px-2.5 py-1.5 rounded border border-red-200 text-red-700 font-semibold hover:bg-red-50 flex items-center gap-1"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Remove</span>
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
@@ -1100,7 +1136,7 @@ export const AdminDashboardPage: React.FC = () => {
                       return (
                         <div
                           key={c.id}
-                          className="p-4 flex items-center justify-between gap-4 text-xs hover:bg-[#FAF8F5]/60"
+                          className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs hover:bg-[#FAF8F5]/60"
                         >
                           <div className="min-w-0">
                             <p className="font-semibold text-[#0B192C] truncate">
@@ -1118,7 +1154,7 @@ export const AdminDashboardPage: React.FC = () => {
                               {lessonsCount} Recordings
                             </p>
                           </div>
-                          <div className="flex items-center gap-2 shrink-0">
+                          <div className="flex flex-wrap items-center gap-2 shrink-0">
                             <button
                               type="button"
                               onClick={() => {
@@ -1150,6 +1186,37 @@ export const AdminDashboardPage: React.FC = () => {
                                 </>
                               )}
                             </button>
+                            {confirmDeleteCourseId === c.id ? (
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    await deleteCourseAdmin(c.id);
+                                    setConfirmDeleteCourseId(null);
+                                  }}
+                                  className="px-2.5 py-1.5 rounded bg-red-600 text-white font-semibold hover:bg-red-700"
+                                >
+                                  Confirm Remove
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmDeleteCourseId(null)}
+                                  className="px-2 py-1.5 rounded border border-[#0B192C]/20 text-[#0B192C]/70"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDeleteCourseId(c.id)}
+                                aria-label={`Remove ${c.title}`}
+                                className="px-2.5 py-1.5 rounded border border-red-200 text-red-700 font-semibold hover:bg-red-50 flex items-center gap-1"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>Remove</span>
+                              </button>
+                            )}
                           </div>
                         </div>
                       );
