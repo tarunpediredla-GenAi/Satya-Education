@@ -143,7 +143,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 const CART_STORAGE_KEY = 'satyas_education_cart_v1';
 const LOCAL_PROGRESS_KEY = 'satyas_education_progress_v1';
 const AUTH_TOKEN_KEY = 'satyas_education_auth_token_v2';
-const PRIMARY_OWNER_ADMIN_EMAIL = 'tarunpediredla9966@gmail.com';
+// Administrator privileges are verified using trusted Firebase claims / registry.
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -226,9 +226,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     ): Promise<UserProfile> => {
       const cleanEmail = (fbUser.email || '').toLowerCase().trim();
       const nowIso = new Date().toISOString();
-      const isOwnerEmail = cleanEmail === PRIMARY_OWNER_ADMIN_EMAIL;
+      let isTrustedAdmin = false;
+      try {
+        const tokenResult = await fbUser.getIdTokenResult();
+        isTrustedAdmin = tokenResult.claims.admin === true;
+        if (!isTrustedAdmin) {
+          const adminSnap = await getDoc(doc(db, 'admins', fbUser.uid));
+          isTrustedAdmin = adminSnap.exists();
+        }
+      } catch (adminCheckError) {
+        console.warn('Unable to verify admin privileges:', adminCheckError);
+      }
 
-      let resolvedRole: 'user' | 'admin' = isOwnerEmail ? 'admin' : 'user';
+      let resolvedRole: 'user' | 'admin' = isTrustedAdmin ? 'admin' : 'user';
       let resolvedDisplayName =
         extras?.displayName?.trim() ||
         fbUser.displayName?.trim() ||
@@ -245,11 +255,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         if (snap.exists()) {
           const existing = snap.data() as Partial<UserProfile> & { createdAt?: unknown };
-          if (existing.role === 'admin' || isOwnerEmail) {
-            resolvedRole = 'admin';
-          } else {
-            resolvedRole = 'user';
-          }
+          resolvedRole = isTrustedAdmin ? 'admin' : 'user';
           if (!extras?.displayName && existing.displayName) {
             resolvedDisplayName = existing.displayName;
           }

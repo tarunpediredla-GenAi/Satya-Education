@@ -16,11 +16,11 @@ import {
 import { getStorage } from 'firebase/storage';
 import appletFirebaseConfig from '../firebase-applet-config.json';
 
-// Silence noisy internal SDK console warnings during transient token states
-setLogLevel('silent');
+// Surface meaningful Firestore warnings while testing production.
+setLogLevel('warn');
 
-// Support VITE_FIREBASE_* environment variables on Vercel (satyaeducation.in)
-// while automatically falling back to firebase-applet-config.json
+// Public config and VITE_* overrides must point to the same SatyaEducation project.
+// Never fall back to an unrelated Firebase project.
 const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env || {};
 
 export const resolvedFirebaseConfig = {
@@ -55,7 +55,7 @@ googleProvider.addScope('email');
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 export const PRIMARY_ADMIN_EMAIL = (
-  env.VITE_ADMIN_EMAIL || 'tarunpediredla9966@gmail.com'
+  env.VITE_ADMIN_EMAIL || ''
 )
   .toLowerCase()
   .trim();
@@ -168,14 +168,4 @@ export function handleFirestoreError(
   throw new Error(JSON.stringify(errInfo));
 }
 
-async function testConnection() {
-  try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn('Please check your Firebase configuration.');
-    }
-  }
-}
-
-testConnection();
+// Do not make an unauthenticated Firestore test read on every page load.

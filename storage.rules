@@ -13,8 +13,8 @@ service firebase.storage {
 
     function isAdmin() {
       return isSignedIn() && (
-        firestore.exists(/databases/(default)/documents/admins/$(request.auth.uid)) ||
-        request.auth.token.email == 'tarunpediredla9966@gmail.com'
+        request.auth.token.get('admin', false) == true ||
+        firestore.exists(/databases/(default)/documents/admins/$(request.auth.uid))
       );
     }
 

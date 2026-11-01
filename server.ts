@@ -3,18 +3,11 @@ import type { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { createRequire } from 'module';
 import dotenv from 'dotenv';
-import { initializeApp } from 'firebase/app';
-import {
-  getFirestore,
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  setDoc,
-  deleteDoc,
-} from 'firebase/firestore';
+import { initializeApp as initializeAdminApp, applicationDefault, cert } from 'firebase-admin/app';
+import { getAuth as getAdminAuth } from 'firebase-admin/auth';
+import { getFirestore as getAdminFirestore, type Firestore, type DocumentReference, type CollectionReference } from 'firebase-admin/firestore';
+import firebaseConfig from './firebase-applet-config.json';
 import { GoogleGenAI, Type } from '@google/genai';
 import { INITIAL_BOOKS, INITIAL_COURSES } from './src/data/catalogData.ts';
 import type {
@@ -32,14 +25,6 @@ dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const require = createRequire(import.meta.url);
-const firebaseConfig = require('./firebase-applet-config.json') as {
-  projectId: string;
-  appId: string;
-  apiKey: string;
-  authDomain: string;
-  firestoreDatabaseId: string;
-};
 
 const app = express();
 
@@ -60,9 +45,31 @@ const PRIMARY_ADMIN_EMAIL = (process.env.ADMIN_EMAIL || '').toLowerCase().trim()
 const ADMIN_INITIAL_PASSWORD = process.env.ADMIN_INITIAL_PASSWORD || '';
 const AUTH_TOKEN_SECRET = process.env.AUTH_TOKEN_SECRET || '';
 
-// Hosted Cloud Firestore Database Connection (Replaces local JSON file storage)
-const firebaseApp = initializeApp(firebaseConfig, 'satyas-backend-firestore');
-const firestoreDb = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
+// Only trusted server credentials may read/write private server_* collections.
+// NEVER commit FIREBASE_SERVICE_ACCOUNT_JSON or expose it as a VITE_* variable.
+const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim();
+const serverCredentialsConfigured = Boolean(
+  serviceAccountJson || process.env.GOOGLE_APPLICATION_CREDENTIALS
+);
+const firebaseAdminApp = initializeAdminApp({
+  projectId: process.env.FIREBASE_PROJECT_ID || firebaseConfig.projectId,
+  credential: serviceAccountJson
+    ? cert(JSON.parse(serviceAccountJson))
+    : applicationDefault(),
+}, 'satyas-backend-firestore');
+const firebaseAdminAuth = getAdminAuth(firebaseAdminApp);
+const firestoreDb = getAdminFirestore(
+  firebaseAdminApp,
+  process.env.FIREBASE_FIRESTORE_DATABASE_ID || firebaseConfig.firestoreDatabaseId || '(default)'
+);
+
+// Keep existing persistence calls while using privileged Admin SDK references.
+const doc = (db: Firestore, name: string, id: string): DocumentReference => db.collection(name).doc(id);
+const collection = (db: Firestore, name: string): CollectionReference => db.collection(name);
+const getDoc = (ref: DocumentReference) => ref.get();
+const getDocs = (ref: CollectionReference) => ref.get();
+const setDoc = (ref: DocumentReference, value: object) => ref.set(value);
+const deleteDoc = (ref: DocumentReference) => ref.delete();
 
 interface StoredUser extends UserProfile {
   passwordHash: string;
@@ -107,6 +114,7 @@ async function persistToFirestore<T>(
     });
   } catch (err) {
     console.error(`Firestore persist error [${collectionName}/${docId}]:`, err);
+    throw err; // Never claim that a payment/order was saved when persistence failed.
   }
 }
 
@@ -116,6 +124,7 @@ async function removeFromFirestore(collectionName: string, rawDocId: string): Pr
     await deleteDoc(doc(firestoreDb, collectionName, docId));
   } catch (err) {
     console.error(`Firestore delete error [${collectionName}/${docId}]:`, err);
+    throw err;
   }
 }
 
@@ -153,16 +162,13 @@ function verifyPassword(password: string, hash: string, salt: string): boolean {
 }
 
 function getRequiredAuthSecret(): string {
-  const secret = AUTH_TOKEN_SECRET.trim();
-  if (secret) return secret;
-  return crypto
-    .createHmac('sha256', firebaseConfig.appId || 'satyas-firebase-app')
-    .update(`${firebaseConfig.projectId}:${firebaseConfig.firestoreDatabaseId}`)
-    .digest('hex');
+  // Public Firebase config cannot be used to derive a signing secret.
+  return AUTH_TOKEN_SECRET.trim();
 }
 
 function createSignedToken(user: UserProfile): string {
   const secret = getRequiredAuthSecret();
+  if (!secret) throw new Error('AUTH_TOKEN_SECRET must be configured on the backend');
   const payload = {
     uid: user.uid,
     email: user.email.toLowerCase(),
@@ -183,6 +189,7 @@ function verifySignedToken(
 ): { uid: string; email: string; role: 'user' | 'student' | 'admin' } | null {
   try {
     const secret = getRequiredAuthSecret();
+    if (!secret) return null;
     const parts = token.split('.');
     if (parts.length !== 2) return null;
     const [base64Payload, signature] = parts;
@@ -211,6 +218,8 @@ let dbInitPromise: Promise<void> | null = null;
 
 // Initialize & synchronize hosted Cloud Firestore database on server boot or serverless cold start
 async function initializeHostedDatabase(): Promise<void> {
+  // Abort if the trusted Firestore connection is unavailable.
+  await firestoreDb.collection('server_books').limit(1).get();
   const [
     loadedUsers,
     loadedBooks,
@@ -278,23 +287,33 @@ async function initializeHostedDatabase(): Promise<void> {
 function ensureDatabaseReady(): Promise<void> {
   if (!dbInitPromise) {
     dbInitPromise = initializeHostedDatabase().catch((err) => {
-      console.warn('Database init notice:', err);
+      dbInitPromise = null;
+      console.error('Backend database initialization failed:', err);
+      throw err;
     });
   }
   return dbInitPromise;
 }
 
-app.use('/api', async (_req, _res, next) => {
-  await ensureDatabaseReady();
-  next();
+app.use('/api', async (_req, res, next) => {
+  if (!serverCredentialsConfigured) {
+    res.status(503).json({
+      error: 'Backend Firebase service account is not configured in Vercel.',
+    });
+    return;
+  }
+  try {
+    await ensureDatabaseReady();
+    next();
+  } catch {
+    res.status(503).json({ error: 'Backend database is temporarily unavailable.' });
+  }
 });
 
 function isServerRecognizedAdminEmail(email: string): boolean {
   const clean = email.toLowerCase().trim();
   if (!clean) return false;
-  if (PRIMARY_ADMIN_EMAIL && clean === PRIMARY_ADMIN_EMAIL) return true;
-  if (clean === 'tarunpediredla9966@gmail.com') return true;
-  return false;
+  return Boolean(PRIMARY_ADMIN_EMAIL && clean === PRIMARY_ADMIN_EMAIL);
 }
 
 function sanitizeUserProfile(u: StoredUser): UserProfile {
@@ -329,95 +348,21 @@ interface VerifiedGoogleIdentity {
   emailVerified: boolean;
   displayName: string;
   photoURL: string;
+  isAdmin: boolean;
 }
 
-let cachedGoogleCerts: { certs: Record<string, string>; expiresAt: number } | null = null;
-
-async function getGooglePublicCerts(): Promise<Record<string, string>> {
-  if (cachedGoogleCerts && Date.now() < cachedGoogleCerts.expiresAt) {
-    return cachedGoogleCerts.certs;
-  }
-  const [firebaseCertsRes, googleOauthCertsRes] = await Promise.all([
-    fetch(
-      'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com'
-    ),
-    fetch('https://www.googleapis.com/oauth2/v1/certs'),
-  ]);
-
-  const combined: Record<string, string> = {};
-  if (firebaseCertsRes.ok) {
-    const fbCerts = (await firebaseCertsRes.json()) as Record<string, string>;
-    Object.assign(combined, fbCerts);
-  }
-  if (googleOauthCertsRes.ok) {
-    const oauthCerts = (await googleOauthCertsRes.json()) as Record<string, string>;
-    Object.assign(combined, oauthCerts);
-  }
-
-  cachedGoogleCerts = {
-    certs: combined,
-    expiresAt: Date.now() + 1000 * 60 * 50, // 50 minutes
-  };
-  return combined;
-}
-
-async function verifySignedJwtWithGoogleCerts(
-  idToken: string
-): Promise<VerifiedGoogleIdentity | null> {
+// Verify only Firebase ID tokens belonging to this project.
+async function verifySignedJwtWithGoogleCerts(idToken: string): Promise<VerifiedGoogleIdentity | null> {
   try {
-    const parts = idToken.split('.');
-    if (parts.length !== 3) return null;
-    const [headerB64, payloadB64, signatureB64] = parts;
-    const header = JSON.parse(Buffer.from(headerB64, 'base64url').toString('utf8')) as {
-      alg?: string;
-      kid?: string;
-    };
-    if (header.alg !== 'RS256' || !header.kid) return null;
-
-    const certs = await getGooglePublicCerts();
-    const publicKeyPem = certs[header.kid];
-    if (!publicKeyPem) return null;
-
-    const verifier = crypto.createVerify('RSA-SHA256');
-    verifier.update(`${headerB64}.${payloadB64}`);
-    verifier.end();
-
-    const sigBuf = Buffer.from(signatureB64, 'base64url');
-    if (!verifier.verify(publicKeyPem, sigBuf)) {
-      return null;
-    }
-
-    const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8')) as {
-      iss?: string;
-      aud?: string;
-      exp?: number;
-      sub?: string;
-      user_id?: string;
-      email?: string;
-      email_verified?: boolean;
-      name?: string;
-      picture?: string;
-    };
-
-    if (!payload.exp || payload.exp * 1000 < Date.now()) return null;
-
-    const firebaseIssuer = `https://securetoken.google.com/${firebaseConfig.projectId}`;
-    const validIssuers = [
-      firebaseIssuer,
-      'https://accounts.google.com',
-      'accounts.google.com',
-    ];
-    if (!payload.iss || !validIssuers.includes(payload.iss)) return null;
-    if (!payload.email) return null;
-    // Require email_verified for direct Google OAuth tokens; allow Firebase Auth tokens (Google or Email/Password)
-    if (payload.iss !== firebaseIssuer && payload.email_verified !== true) return null;
-
+    const user = await firebaseAdminAuth.verifyIdToken(idToken, true);
+    if (!user.uid || !user.email) return null;
     return {
-      uid: payload.user_id || payload.sub || `usr_firebase_${Date.now()}`,
-      email: payload.email.toLowerCase().trim(),
-      emailVerified: Boolean(payload.email_verified),
-      displayName: payload.name || payload.email.split('@')[0],
-      photoURL: payload.picture || '',
+      uid: user.uid,
+      email: user.email.toLowerCase().trim(),
+      emailVerified: user.email_verified === true,
+      displayName: typeof user.name === 'string' ? user.name : user.email.split('@')[0],
+      photoURL: typeof user.picture === 'string' ? user.picture : '',
+      isAdmin: user.admin === true,
     };
   } catch {
     return null;
@@ -449,11 +394,15 @@ async function resolveUserFromRequest(req: AuthenticatedRequest): Promise<Stored
   );
 
   // Check Firestore users/{uid} document if we need to confirm admin role or display name
-  let firestoreRole: 'user' | 'admin' = isServerRecognizedAdminEmail(cleanEmail) ? 'admin' : 'user';
+  let firestoreRole: 'user' | 'admin' =
+    firebaseVerified.isAdmin || (firebaseVerified.emailVerified && isServerRecognizedAdminEmail(cleanEmail))
+      ? 'admin' : 'user';
   let firestoreDisplayName = firebaseVerified.displayName;
   let firestorePhone = '';
   let firestoreBio = '';
   try {
+    const registry = await getDoc(doc(firestoreDb, 'admins', firebaseVerified.uid));
+    if (registry.exists()) firestoreRole = 'admin';
     const fsUserSnap = await getDoc(doc(firestoreDb, 'users', firebaseVerified.uid));
     if (fsUserSnap.exists()) {
       const fsData = fsUserSnap.data() as {
@@ -462,9 +411,7 @@ async function resolveUserFromRequest(req: AuthenticatedRequest): Promise<Stored
         phone?: string;
         bio?: string;
       };
-      if (fsData.role === 'admin' || isServerRecognizedAdminEmail(cleanEmail)) {
-        firestoreRole = 'admin';
-      }
+      // An editable users/{uid} role is never sufficient to grant admin access.
       if (fsData.displayName) firestoreDisplayName = fsData.displayName;
       if (fsData.phone) firestorePhone = fsData.phone;
       if (fsData.bio) firestoreBio = fsData.bio;
@@ -495,8 +442,8 @@ async function resolveUserFromRequest(req: AuthenticatedRequest): Promise<Stored
     await persistToFirestore('server_users', user.uid, user);
   } else {
     let changed = false;
-    if (firestoreRole === 'admin' && user.role !== 'admin') {
-      user.role = 'admin';
+    if (user.role !== firestoreRole) {
+      user.role = firestoreRole;
       changed = true;
     }
     if (firebaseVerified.photoURL && !user.photoURL) {
@@ -552,78 +499,8 @@ async function verifyGoogleOrFirebaseToken(params: {
   idToken?: string;
   googleAccessToken?: string;
 }): Promise<VerifiedGoogleIdentity | null> {
-  const { idToken, googleAccessToken } = params;
-
-  // 1. Verify cryptographic RS256 signature of Firebase / Google ID token
-  if (idToken && typeof idToken === 'string' && idToken.trim().length > 20) {
-    const rsaVerified = await verifySignedJwtWithGoogleCerts(idToken.trim());
-    if (rsaVerified) return rsaVerified;
-
-    // Fallback to Google's official OAuth2 tokeninfo endpoint for Google ID tokens
-    try {
-      const tokenInfoRes = await fetch(
-        `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken.trim())}`
-      );
-      if (tokenInfoRes.ok) {
-        const info = (await tokenInfoRes.json()) as {
-          sub?: string;
-          email?: string;
-          email_verified?: string | boolean;
-          name?: string;
-          picture?: string;
-        };
-        const isVerified = info.email_verified === true || info.email_verified === 'true';
-        if (info.email && isVerified) {
-          return {
-            uid: info.sub || `usr_google_${Date.now()}`,
-            email: info.email.toLowerCase().trim(),
-            emailVerified: true,
-            displayName: info.name || info.email.split('@')[0],
-            photoURL: info.picture || '',
-          };
-        }
-      }
-    } catch {
-      // Proceed to Google OAuth2 accessToken verification if available
-    }
-  }
-
-  // 2. Verify Google OAuth2 Access Token directly against Google's UserInfo API
-  if (
-    googleAccessToken &&
-    typeof googleAccessToken === 'string' &&
-    googleAccessToken.trim().length > 15
-  ) {
-    try {
-      const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-        headers: {
-          Authorization: `Bearer ${googleAccessToken.trim()}`,
-        },
-      });
-      if (userInfoRes.ok) {
-        const info = (await userInfoRes.json()) as {
-          sub?: string;
-          email?: string;
-          email_verified?: boolean;
-          name?: string;
-          picture?: string;
-        };
-        if (info.email && info.email_verified === true) {
-          return {
-            uid: info.sub || `usr_google_${Date.now()}`,
-            email: info.email.toLowerCase().trim(),
-            emailVerified: true,
-            displayName: info.name || info.email.split('@')[0],
-            photoURL: info.picture || '',
-          };
-        }
-      }
-    } catch {
-      return null;
-    }
-  }
-
-  return null;
+  // OAuth access tokens alone do not prove membership in our Firebase project.
+  return params.idToken ? verifySignedJwtWithGoogleCerts(params.idToken) : null;
 }
 
 // Helper to idempotently unlock enrollments & deduct physical stock ONLY when an order transitions to 'paid'
@@ -650,6 +527,8 @@ async function fulfillPaidOrderIdempotently(order: OrderRecord): Promise<void> {
       };
       dbState.enrollments.push(newEnrollment);
       await persistToFirestore('server_enrollments', newEnrollment.id, newEnrollment);
+      // Deterministic entitlement ID is used by Firebase Storage rules.
+      await setDoc(doc(firestoreDb, 'enrollments', enrId), { ...newEnrollment, id: enrId });
     }
 
     if (item.itemType === 'physical_book') {
@@ -864,16 +743,14 @@ app.post('/api/auth/google', async (req, res) => {
     }
 
     const cleanEmail = verifiedIdentity.email.toLowerCase().trim();
-    let isServerAdmin = isServerRecognizedAdminEmail(cleanEmail);
+    let isServerAdmin = verifiedIdentity.isAdmin ||
+      (verifiedIdentity.emailVerified && isServerRecognizedAdminEmail(cleanEmail));
 
-    // Also check if admin role was assigned in Firestore users/{uid}
     try {
-      const fsSnap = await getDoc(doc(firestoreDb, 'users', verifiedIdentity.uid));
-      if (fsSnap.exists() && fsSnap.data()?.role === 'admin') {
-        isServerAdmin = true;
-      }
+      const registry = await getDoc(doc(firestoreDb, 'admins', verifiedIdentity.uid));
+      if (registry.exists()) isServerAdmin = true;
     } catch {
-      // Ignore Firestore lookup warning
+      // No trusted registry confirmation, so privileges are not elevated.
     }
 
     let user = dbState.users.find(
@@ -906,9 +783,7 @@ app.post('/api/auth/google', async (req, res) => {
       dbState.users.push(user);
       await persistToFirestore('server_users', user.uid, user);
     } else {
-      if (isServerAdmin) {
-        user.role = 'admin';
-      }
+      user.role = isServerAdmin ? 'admin' : 'user';
       if (displayNameOverride && displayNameOverride.trim().length >= 2) {
         user.displayName = displayNameOverride.trim().slice(0, 120);
       }
@@ -1250,6 +1125,13 @@ app.post('/api/cashfree/create-order', requireAuth, async (req: AuthenticatedReq
       !cfAppId.includes('PLACEHOLDER') &&
       !cfSecretKey.includes('placeholder');
 
+    if (!hasRealCashfreeKeys) {
+      res.status(503).json({
+        error: 'Cashfree payments are not configured; no orders can be paid until valid keys are supplied.',
+      });
+      return;
+    }
+
     let cashfreeOrderId = `cf_sandbox_${orderId}`;
     let paymentSessionId = `session_sandbox_${crypto.randomBytes(12).toString('hex')}`;
     let paymentMode: OrderRecord['paymentMode'] = 'cashfree_sandbox';
@@ -1286,6 +1168,10 @@ app.post('/api/cashfree/create-order', requireAuth, async (req: AuthenticatedReq
         }),
       });
 
+      if (!cfRes.ok) {
+        res.status(502).json({ error: 'Cashfree could not create the payment order.' });
+        return;
+      }
       if (cfRes.ok) {
         const cfJson = (await cfRes.json()) as {
           cf_order_id?: string | number;
@@ -1293,7 +1179,8 @@ app.post('/api/cashfree/create-order', requireAuth, async (req: AuthenticatedReq
           payment_session_id?: string;
         };
         cashfreeOrderId = String(cfJson.cf_order_id || cfJson.order_id || orderId);
-        paymentSessionId = cfJson.payment_session_id || paymentSessionId;
+        if (!cfJson.payment_session_id) throw new Error('Cashfree payment session ID is missing');
+        paymentSessionId = cfJson.payment_session_id;
         paymentMode = cfEnv === 'PRODUCTION' ? 'cashfree_live' : 'cashfree_sandbox';
       }
     }
@@ -1353,10 +1240,7 @@ app.post('/api/cashfree/create-order', requireAuth, async (req: AuthenticatedReq
 app.post('/api/cashfree/verify', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const user = req.authUser!;
-    const { orderId, simulatedOutcome } = req.body as {
-      orderId?: string;
-      simulatedOutcome?: 'PAID' | 'PENDING' | 'FAILED';
-    };
+    const { orderId } = req.body as { orderId?: string };
 
     if (!orderId) {
       res.status(400).json({ error: 'Order ID is required for verification.' });
@@ -1422,17 +1306,8 @@ app.post('/api/cashfree/verify', requireAuth, async (req: AuthenticatedRequest, 
         }
       }
     } else {
-      // Cashfree Sandbox Test Simulation outcome
-      if (simulatedOutcome === 'PAID') {
-        resolvedStatus = 'paid';
-        cfPaymentId = `cf_sandbox_pay_${Date.now()}`;
-      } else if (simulatedOutcome === 'FAILED') {
-        resolvedStatus = 'failed';
-        cfPaymentId = `cf_sandbox_failed_${Date.now()}`;
-      } else {
-        resolvedStatus = 'pending';
-        cfPaymentId = 'pending_sandbox_confirmation';
-      }
+      res.status(503).json({ error: 'Cashfree verification requires valid server credentials.' });
+      return;
     }
 
     order.status = resolvedStatus;
