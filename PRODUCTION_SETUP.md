@@ -8,6 +8,8 @@ In Firebase Console → Authentication → Sign-in method, enable Google (and Em
 - `satyaeducation.in`
 - `www.satyaeducation.in` (if used)
 
+For the AI Studio preview, also add the exact hostname ending in `.run.app` shown in the error banner. This is different from `aistudio.google.com`. Click **Add domain** separately for each hostname; do not paste a comma-separated list, `https://`, or a page path. Make these changes in project **satyaeducation-dc4ab**, unless your deployed VITE variables intentionally select a different project. Refresh and retry Google login after saving. Committing code or redeploying Vercel cannot change Firebase's authorized-domain list.
+
 Firebase configuration in this repository now points to the SatyaEducation project, not an unrelated AI Studio project.
 
 ## 2. Secure database and storage

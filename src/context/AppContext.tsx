@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import {
   signInWithPopup,
   signInWithRedirect,
@@ -154,6 +154,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return null;
     }
   });
+  // Keep token changes out of the auth listener's callback dependencies.
+  // A server session exchange can issue a new token on every sync.
+  const authTokenRef = useRef(authToken);
+  useEffect(() => {
+    authTokenRef.current = authToken;
+  }, [authToken]);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [authError, setAuthError] = useState<string | null>(null);
 
@@ -378,7 +384,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Refresh admin overview (protected by backend requireAdmin + Firestore fallback)
   const refreshAdminOverview = useCallback(
     async (overrideToken?: string | null) => {
-      const tokenToUse = overrideToken ?? authToken;
+      const tokenToUse = overrideToken ?? authTokenRef.current;
       if (!tokenToUse) return;
       try {
         const res = await fetch('/api/admin/overview', {
@@ -453,7 +459,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.warn('Admin overview refresh notice:', err);
       }
     },
-    [authToken]
+    []
   );
 
   // Sync Firebase user with backend `/api/auth/google` and load own orders/enrollments

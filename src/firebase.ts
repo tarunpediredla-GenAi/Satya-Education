@@ -63,7 +63,8 @@ export const PRIMARY_ADMIN_EMAIL = (
 export function formatFirebaseAuthError(error: unknown): string {
   const rawMessage = error instanceof Error ? error.message : String(error || '');
   const codeMatch = rawMessage.match(/\((auth\/[^)]+)\)/);
-  const code = codeMatch ? codeMatch[1] : rawMessage;
+  const errorCode = (error as { code?: unknown } | null)?.code;
+  const code = typeof errorCode === 'string' ? errorCode : codeMatch ? codeMatch[1] : rawMessage;
 
   const currentHost =
     typeof window !== 'undefined' && window.location?.hostname
@@ -71,7 +72,7 @@ export function formatFirebaseAuthError(error: unknown): string {
       : 'satyaeducation.in';
 
   if (code.includes('auth/unauthorized-domain')) {
-    return `Domain "${currentHost}" is not yet authorized in Firebase. Add "${currentHost}", "satyaeducation.in", and "www.satyaeducation.in" in Firebase Console → Authentication → Settings → Authorized domains.`;
+    return `Domain "${currentHost}" is not yet authorized in Firebase. Open Firebase project "${resolvedFirebaseConfig.projectId}" → Authentication → Settings → Authorized domains → Add domain. Enter "${currentHost}" by itself (no https:// or path), then click Add. Add each other website hostname separately.`;
   }
   if (code.includes('auth/operation-not-allowed')) {
     return 'This sign-in method is not enabled yet in Firebase Console → Authentication → Sign-in method. Please enable Google and Email/Password providers.';
