@@ -402,9 +402,9 @@ async function resolveUserFromRequest(req: AuthenticatedRequest): Promise<Stored
   let firestoreBio = '';
   try {
     const registry = await getDoc(doc(firestoreDb, 'admins', firebaseVerified.uid));
-    if (registry.exists()) firestoreRole = 'admin';
+    if (registry.exists) firestoreRole = 'admin';
     const fsUserSnap = await getDoc(doc(firestoreDb, 'users', firebaseVerified.uid));
-    if (fsUserSnap.exists()) {
+    if (fsUserSnap.exists) {
       const fsData = fsUserSnap.data() as {
         role?: string;
         displayName?: string;
@@ -748,7 +748,7 @@ app.post('/api/auth/google', async (req, res) => {
 
     try {
       const registry = await getDoc(doc(firestoreDb, 'admins', verifiedIdentity.uid));
-      if (registry.exists()) isServerAdmin = true;
+      if (registry.exists) isServerAdmin = true;
     } catch {
       // No trusted registry confirmation, so privileges are not elevated.
     }
