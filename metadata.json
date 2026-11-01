@@ -1,0 +1,6 @@
+{
+  "name": "Satya's Education",
+  "description": "Polished education e-commerce platform for technology and story books, online courses, and recorded video classes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

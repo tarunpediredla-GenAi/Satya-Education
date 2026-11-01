@@ -1,0 +1,231 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net: Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Hardened Global Primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isVerifiedUser() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        request.auth.token.email == 'tarunpediredla9966@gmail.com'
+      );
+    }
+
+    // 3. Entity Validation Blueprints
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'displayName', 'photoURL', 'role', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'displayName', 'photoURL', 'role', 'createdAt', 'updatedAt']) &&
+        data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.uid == request.auth.uid &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 254 &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120 &&
+        data.photoURL is string && data.photoURL.size() <= 1024 &&
+        data.role is string && (data.role == 'student' || (data.role == 'admin' && isAdmin())) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidBook(data) {
+      return data.keys().hasAll(['id', 'title', 'author', 'category', 'subcategory', 'priceInr', 'ebookPriceInr', 'format', 'stock', 'description', 'isbn', 'pages', 'language', 'archived', 'updatedAt']) &&
+        data.keys().hasOnly(['id', 'title', 'author', 'category', 'subcategory', 'priceInr', 'ebookPriceInr', 'format', 'stock', 'description', 'isbn', 'pages', 'language', 'archived', 'updatedAt']) &&
+        isValidId(data.id) &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+        data.author is string && data.author.size() >= 1 && data.author.size() <= 120 &&
+        data.category is string && (data.category == 'Technology' || data.category == 'Stories & Literature') &&
+        data.subcategory is string && data.subcategory.size() >= 1 && data.subcategory.size() <= 80 &&
+        data.priceInr is number && data.priceInr >= 0 && data.priceInr <= 100000 &&
+        data.ebookPriceInr is number && data.ebookPriceInr >= 0 && data.ebookPriceInr <= 100000 &&
+        data.format is string && (data.format == 'Both' || data.format == 'Hardcover' || data.format == 'E-Book') &&
+        data.stock is number && data.stock >= 0 && data.stock <= 100000 &&
+        data.description is string && data.description.size() >= 1 && data.description.size() <= 3000 &&
+        data.isbn is string && data.isbn.size() >= 1 && data.isbn.size() <= 40 &&
+        data.pages is number && data.pages >= 1 && data.pages <= 10000 &&
+        data.language is string && data.language.size() >= 1 && data.language.size() <= 40 &&
+        data.archived is bool &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidCourse(data) {
+      return data.keys().hasAll(['id', 'title', 'instructor', 'subject', 'level', 'priceInr', 'language', 'duration', 'description', 'archived', 'updatedAt']) &&
+        data.keys().hasOnly(['id', 'title', 'instructor', 'subject', 'level', 'priceInr', 'language', 'duration', 'description', 'archived', 'updatedAt']) &&
+        isValidId(data.id) &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+        data.instructor is string && data.instructor.size() >= 1 && data.instructor.size() <= 120 &&
+        data.subject is string && data.subject.size() >= 1 && data.subject.size() <= 80 &&
+        data.level is string && (data.level == 'Beginner' || data.level == 'Intermediate' || data.level == 'Advanced') &&
+        data.priceInr is number && data.priceInr >= 0 && data.priceInr <= 200000 &&
+        data.language is string && data.language.size() >= 1 && data.language.size() <= 40 &&
+        data.duration is string && data.duration.size() >= 1 && data.duration.size() <= 40 &&
+        data.description is string && data.description.size() >= 1 && data.description.size() <= 3000 &&
+        data.archived is bool &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidOrder(data) {
+      return data.keys().hasAll(['id', 'userId', 'userEmail', 'totalInr', 'paymentId', 'razorpayOrderId', 'paymentMode', 'status', 'shippingStatus', 'shippingAddressSummary', 'itemsSummary', 'itemIds', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['id', 'userId', 'userEmail', 'totalInr', 'paymentId', 'razorpayOrderId', 'paymentMode', 'status', 'shippingStatus', 'shippingAddressSummary', 'itemsSummary', 'itemIds', 'createdAt', 'updatedAt']) &&
+        isValidId(data.id) &&
+        isValidId(data.userId) &&
+        data.userEmail is string && data.userEmail.size() >= 3 && data.userEmail.size() <= 254 &&
+        data.totalInr is number && data.totalInr >= 0 && data.totalInr <= 1000000 &&
+        data.paymentId is string && data.paymentId.size() >= 1 && data.paymentId.size() <= 128 &&
+        data.razorpayOrderId is string && data.razorpayOrderId.size() >= 1 && data.razorpayOrderId.size() <= 128 &&
+        data.paymentMode is string && (data.paymentMode == 'razorpay_live' || data.paymentMode == 'demo_verified') &&
+        data.status is string && (data.status == 'paid' || data.status == 'failed' || data.status == 'pending' || data.status == 'refunded') &&
+        data.shippingStatus is string && (data.shippingStatus == 'not_applicable' || data.shippingStatus == 'processing' || data.shippingStatus == 'shipped' || data.shippingStatus == 'delivered') &&
+        data.shippingAddressSummary is string && data.shippingAddressSummary.size() <= 600 &&
+        data.itemsSummary is string && data.itemsSummary.size() >= 1 && data.itemsSummary.size() <= 2000 &&
+        data.itemIds is string && data.itemIds.size() >= 1 && data.itemIds.size() <= 1000 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidEnrollment(data) {
+      return data.keys().hasAll(['id', 'userId', 'itemId', 'itemType', 'orderId', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'userId', 'itemId', 'itemType', 'orderId', 'createdAt']) &&
+        isValidId(data.id) &&
+        isValidId(data.userId) &&
+        isValidId(data.itemId) &&
+        data.itemType is string && (data.itemType == 'course' || data.itemType == 'ebook' || data.itemType == 'physical_book') &&
+        isValidId(data.orderId) &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidProgress(data) {
+      return data.keys().hasAll(['id', 'userId', 'courseId', 'lessonId', 'playbackSeconds', 'completed', 'notes', 'updatedAt']) &&
+        data.keys().hasOnly(['id', 'userId', 'courseId', 'lessonId', 'playbackSeconds', 'completed', 'notes', 'updatedAt']) &&
+        isValidId(data.id) &&
+        isValidId(data.userId) &&
+        data.userId == request.auth.uid &&
+        isValidId(data.courseId) &&
+        isValidId(data.lessonId) &&
+        data.playbackSeconds is number && data.playbackSeconds >= 0 && data.playbackSeconds <= 86400 &&
+        data.completed is bool &&
+        data.notes is string && data.notes.size() <= 4000 &&
+        data.updatedAt is timestamp;
+    }
+
+    // Connection test endpoint
+    match /test/{docId} {
+      allow get: if isValidId(docId);
+    }
+
+    // Admins Registry (Read-only from client; provisioned externally/console)
+    match /admins/{adminUid} {
+      allow get: if isSignedIn() && isValidId(adminUid) && (request.auth.uid == adminUid || isAdmin());
+      allow write: if false;
+    }
+
+    // Users Collection (PII Protected)
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow create: if isVerifiedUser() && isValidId(userId) && isOwner(userId) &&
+        isValidUser(incoming()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() && isValidId(userId) && isValidUser(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().email == existing().email &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isAdmin() ||
+          (isOwner(userId) && incoming().role == existing().role && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'updatedAt']))
+        );
+      allow delete: if isAdmin() && isValidId(userId);
+    }
+
+    // Books Collection (Public Catalog Overrides & Admin Additions)
+    match /books/{bookId} {
+      allow get: if isValidId(bookId);
+      allow list: if true;
+      allow create: if isAdmin() && isValidId(bookId) && isValidBook(incoming()) && incoming().id == bookId && incoming().updatedAt == request.time;
+      allow update: if isAdmin() && isValidId(bookId) && isValidBook(incoming()) && incoming().id == existing().id && incoming().updatedAt == request.time;
+      allow delete: if isAdmin() && isValidId(bookId);
+    }
+
+    // Courses Collection (Public Catalog Overrides & Admin Additions)
+    match /courses/{courseId} {
+      allow get: if isValidId(courseId);
+      allow list: if true;
+      allow create: if isAdmin() && isValidId(courseId) && isValidCourse(incoming()) && incoming().id == courseId && incoming().updatedAt == request.time;
+      allow update: if isAdmin() && isValidId(courseId) && isValidCourse(incoming()) && incoming().id == existing().id && incoming().updatedAt == request.time;
+      allow delete: if isAdmin() && isValidId(courseId);
+    }
+
+    // Orders Collection
+    match /orders/{orderId} {
+      allow get: if isSignedIn() && isValidId(orderId) && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isVerifiedUser() && isValidId(orderId) && isValidOrder(incoming()) &&
+        incoming().id == orderId &&
+        incoming().userId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isAdmin() && isValidId(orderId) && isValidOrder(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().userId == existing().userId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'shippingStatus', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    // Enrollments Collection
+    match /enrollments/{enrollmentId} {
+      allow get: if isSignedIn() && isValidId(enrollmentId) && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isVerifiedUser() && isValidId(enrollmentId) && isValidEnrollment(incoming()) &&
+        incoming().id == enrollmentId &&
+        (incoming().userId == request.auth.uid || isAdmin()) &&
+        incoming().createdAt == request.time &&
+        exists(/databases/$(database)/documents/orders/$(incoming().orderId));
+      allow update, delete: if isAdmin() && isValidId(enrollmentId);
+    }
+
+    // Learning Progress Collection
+    match /progress/{progressId} {
+      allow get: if isSignedIn() && isValidId(progressId) && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isVerifiedUser() && isValidId(progressId) && isValidProgress(incoming()) &&
+        incoming().id == progressId &&
+        incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() && isValidId(progressId) && isValidProgress(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().userId == existing().userId &&
+        incoming().courseId == existing().courseId &&
+        incoming().lessonId == existing().lessonId &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['playbackSeconds', 'completed', 'notes', 'updatedAt']);
+      allow delete: if isSignedIn() && isValidId(progressId) && existing().userId == request.auth.uid;
+    }
+  }
+}

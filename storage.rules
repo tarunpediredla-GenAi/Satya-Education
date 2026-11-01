@@ -1,0 +1,53 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Default deny
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        firestore.exists(/databases/(default)/documents/admins/$(request.auth.uid)) ||
+        request.auth.token.email == 'tarunpediredla9966@gmail.com'
+      );
+    }
+
+    function hasCourseAccess(courseId) {
+      return isSignedIn() && (
+        isAdmin() ||
+        firestore.exists(/databases/(default)/documents/enrollments/$(request.auth.uid + '_' + courseId))
+      );
+    }
+
+    function hasBookAccess(bookId) {
+      return isSignedIn() && (
+        isAdmin() ||
+        firestore.exists(/databases/(default)/documents/enrollments/$(request.auth.uid + '_' + bookId))
+      );
+    }
+
+    // Public cover art and thumbnails
+    match /public/{category}/{fileName} {
+      allow read: if true;
+      allow write: if isAdmin() && request.resource.size < 10 * 1024 * 1024;
+    }
+
+    // Protected E-Books (Only accessible to verified purchasers or admins)
+    match /protected/ebooks/{bookId}/{fileName} {
+      allow read: if hasBookAccess(bookId);
+      allow write: if isAdmin() && request.resource.size < 50 * 1024 * 1024;
+    }
+
+    // Protected Recorded Class Videos & Resources (Only accessible to enrolled students or admins)
+    match /protected/courses/{courseId}/{lessonId}/{fileName} {
+      allow read: if hasCourseAccess(courseId);
+      allow write: if isAdmin() && request.resource.size < 500 * 1024 * 1024;
+    }
+  }
+}

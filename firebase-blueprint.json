@@ -1,0 +1,349 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Registered student or administrator profile.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "User email address",
+          "maxLength": 254
+        },
+        "displayName": {
+          "type": "string",
+          "description": "User full name",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "Profile avatar URL",
+          "maxLength": 1024
+        },
+        "role": {
+          "type": "string",
+          "enum": ["student", "admin"],
+          "description": "Role enforced by backend and security rules",
+          "maxLength": 20
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp"
+        }
+      },
+      "required": ["uid", "email", "displayName", "photoURL", "role", "createdAt", "updatedAt"]
+    },
+    "Book": {
+      "title": "Book",
+      "description": "Physical or downloadable e-book in Technology or Stories categories.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "author": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "category": {
+          "type": "string",
+          "enum": ["Technology", "Stories & Literature"],
+          "maxLength": 50
+        },
+        "subcategory": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "priceInr": {
+          "type": "number",
+          "description": "Price in INR"
+        },
+        "ebookPriceInr": {
+          "type": "number",
+          "description": "E-Book price in INR"
+        },
+        "format": {
+          "type": "string",
+          "enum": ["Both", "Hardcover", "E-Book"],
+          "maxLength": 30
+        },
+        "stock": {
+          "type": "number",
+          "description": "Physical inventory count"
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 3000
+        },
+        "isbn": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "pages": {
+          "type": "number"
+        },
+        "language": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "archived": {
+          "type": "boolean"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "title", "author", "category", "subcategory", "priceInr", "ebookPriceInr", "format", "stock", "description", "isbn", "pages", "language", "archived", "updatedAt"]
+    },
+    "Course": {
+      "title": "Course",
+      "description": "Online course with modules and recorded video classes.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "instructor": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "subject": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "level": {
+          "type": "string",
+          "enum": ["Beginner", "Intermediate", "Advanced"],
+          "maxLength": 30
+        },
+        "priceInr": {
+          "type": "number"
+        },
+        "language": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "duration": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 3000
+        },
+        "archived": {
+          "type": "boolean"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "title", "instructor", "subject", "level", "priceInr", "language", "duration", "description", "archived", "updatedAt"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Verified purchase order for books and courses.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userEmail": {
+          "type": "string",
+          "maxLength": 254
+        },
+        "totalInr": {
+          "type": "number"
+        },
+        "paymentId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "razorpayOrderId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "paymentMode": {
+          "type": "string",
+          "enum": ["razorpay_live", "demo_verified"],
+          "maxLength": 30
+        },
+        "status": {
+          "type": "string",
+          "enum": ["paid", "failed", "pending", "refunded"],
+          "maxLength": 30
+        },
+        "shippingStatus": {
+          "type": "string",
+          "enum": ["not_applicable", "processing", "shipped", "delivered"],
+          "maxLength": 30
+        },
+        "shippingAddressSummary": {
+          "type": "string",
+          "maxLength": 600
+        },
+        "itemsSummary": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "itemIds": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "userId", "userEmail", "totalInr", "paymentId", "razorpayOrderId", "paymentMode", "status", "shippingStatus", "shippingAddressSummary", "itemsSummary", "itemIds", "createdAt", "updatedAt"]
+    },
+    "Enrollment": {
+      "title": "Enrollment",
+      "description": "Access grant for an enrolled course or purchased e-book.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "itemId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "itemType": {
+          "type": "string",
+          "enum": ["course", "ebook", "physical_book"],
+          "maxLength": 30
+        },
+        "orderId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "userId", "itemId", "itemType", "orderId", "createdAt"]
+    },
+    "Progress": {
+      "title": "Progress",
+      "description": "Student lesson playback position, completion status, and personal notes.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "courseId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "lessonId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "playbackSeconds": {
+          "type": "number"
+        },
+        "completed": {
+          "type": "boolean"
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "userId", "courseId", "lessonId", "playbackSeconds", "completed", "notes", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles with strict owner/admin read and RBAC protection."
+    },
+    "/books/{bookId}": {
+      "schema": { "$ref": "#/entities/Book" },
+      "description": "Book catalog overrides and admin-created books."
+    },
+    "/courses/{courseId}": {
+      "schema": { "$ref": "#/entities/Course" },
+      "description": "Course catalog overrides and admin-created courses."
+    },
+    "/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/Order" },
+      "description": "Customer orders isolated by userId and manageable by admins."
+    },
+    "/enrollments/{enrollmentId}": {
+      "schema": { "$ref": "#/entities/Enrollment" },
+      "description": "Purchased course and e-book access grants."
+    },
+    "/progress/{progressId}": {
+      "schema": { "$ref": "#/entities/Progress" },
+      "description": "Student video playback resume points, completion flags, and notes."
+    }
+  }
+}
